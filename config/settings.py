@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
-from typing import List
-from pydantic import AnyHttpUrl, validator
+from typing import List, Optional
+from pydantic import AnyHttpUrl, validator, Field
+from datetime import datetime, timedelta
 
 class Settings(BaseSettings):
     # App Config
@@ -20,8 +21,15 @@ class Settings(BaseSettings):
     # CORS
     backend_cors_origins: List[AnyHttpUrl] = []
     
-    # Database
-    database_url: str = "postgresql://postgres:%23nelprox92@localhost:5432/secured_bank_db"
+    # MongoDB Configuration
+    mongodb_url: str = "mongodb://localhost:27017"
+    mongodb_db_name: str = "secured_bank"
+    
+    # JWT Configuration
+    jwt_secret_key: str = "your_jwt_secret_key_here"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
     
     # Rate Limiting
     rate_limit: str = "100/minute"

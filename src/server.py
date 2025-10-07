@@ -2,55 +2,82 @@
 SecuredBank AI Service
 =========================
 
-FastAPI application for banking AI services
+FastAPI application for banking AI services with MongoDB and JWT authentication
 """
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from contextlib import asynccontextmanager
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import logging
+import uvicorn
+
 from core.config import get_settings
-from core.security import api_key_auth
-from db.db import connectToPostgres
+from db.mongo import connect_to_mongo, close_mongo_connection, db
+from middleware.auth_middleware import JWTBearer, RateLimiter
+from controllers import auth_controllers
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Application Lifecycle
 @asynccontextmanager
-async def lifecycle(app: FastAPI):
+async def lifespan(app: FastAPI):
     # Startup
     settings = get_settings()
     logger.info(f"Starting {settings.app_name} v{settings.version} in {settings.environment} mode")
     
-    # Initialize resources (database, models, etc.)
-    await connectToPostgres()
-    
-    yield  # Run the application
-    
-    # Cleanup
-    # await database.disconnect()
-    logger.info("Shutting down application")
+    try:
+        # Initialize MongoDB connection
+        await connect_to_mongo()
+        logger.info("Connected to MongoDB")
+        
+        # Create indexes
+        await db.db.users.create_index("email", unique=True)
+        await db.db.users.create_index("username", unique=True)
+        logger.info("Database indexes created")
+        
+        yield  # Run the application
+        
+    except Exception as e:
+        logger.error(f"Error during startup: {str(e)}")
+        raise
+    finally:
+        # Cleanup
+        await close_mongo_connection()
+        logger.info("Application shutdown complete")
 
 # Create FastAPI app with Lifecycle
 app = FastAPI(
     title="SecuredBank AI Service",
-    description="Secure API for banking AI services",
+    description="Secure API for banking AI services with JWT authentication",
     version=get_settings().version,
-    lifecycle=lifecycle,
+    lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    openapi_url="/openapi.json" if get_settings().environment != "production" else None,
 )
 
-# Configure CORS
+# Add middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().backend_cors_origins or ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Add rate limiting
+app.add_middleware(RateLimiter, times=100, seconds=60)  # 100 requests per minute
+
+# Include routers
+app.include_router(
+    auth_controllers.router,
+    prefix="/api/auth",
+    tags=["Authentication"],
+    responses={404: {"description": "Not found"}},
 )
 
 # Health check endpoint (public)
