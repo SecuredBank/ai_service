@@ -118,7 +118,7 @@ class AuthService:
             )
 
     @staticmethod
-    async def refresh_tokens(refresh_token: str) -> Dict[str, str]:
+    async def refresh_token(refresh_token: str) -> Dict[str, str]:
         """Refresh access token using refresh token."""
         try:
             payload = jwt.decode(
